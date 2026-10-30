@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ビタミン・ミネラル RDA トラッカー</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  .bar-fill { transition: width 0.4s ease; }
+  .card-hover:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+<div class="max-w-5xl mx-auto px-4 py-8">
+  <h1 class="text-3xl font-bold text-center text-green-700 mb-2">ビタミン・ミネラル RDA トラッカー</h1>
+  <p class="text-center text-gray-500 mb-8">日本人食事摂取基準（2020年版）に基づく栄養素充足管理</p>
+
+  <!-- 食材追加 -->
+  <div class="bg-white rounded-xl shadow p-6 mb-8 card-hover">
+    <h2 class="text-xl font-semibold mb-4 text-gray-700">食材を追加</h2>
+    <div class="flex flex-wrap gap-3 items-end">
+      <div>
+        <label class="block text-sm text-gray-600 mb-1" for="food-select">食材</label>
+        <select id="food-select" class="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm text-gray-600 mb-1" for="food-amount">量 (g)</label>
+        <input type="number" id="food-amount" value="100" min="1" max="2000"
+          class="border rounded-lg px-3 py-2 w-24 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+      </div>
+      <button onclick="addFood()" aria-label="食材を追加" class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition">追加</button>
+      <button onclick="clearAll()" aria-label="全てリセット" class="bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-lg text-sm font-medium transition">リセット</button>
+    </div>
+    <!-- 追加済み食材 -->
+    <div id="added-foods" class="mt-4 flex flex-wrap gap-2"></div>
+  </div>
+
+  <!-- タブ切り替え -->
+  <div class="flex gap-2 mb-4">
+    <button onclick="setTab('vitamin')" id="tab-vitamin" aria-label="ビタミン表示"
+      class="px-5 py-2 rounded-full text-sm font-semibold bg-green-600 text-white transition">ビタミン</button>
+    <button onclick="setTab('mineral')" id="tab-mineral" aria-label="ミネラル表示"
+      class="px-5 py-2 rounded-full text-sm font-semibold bg-white text-gray-600 border transition">ミネラル</button>
+  </div>
+
+  <!-- 栄養素リスト -->
+  <div id="nutrient-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+</div>
+
+<script>
+// === RDA データ（日本人食事摂取基準2020・30-49歳男性基準）===
+const RDA = {
+  vitamins: [
+    { id:'vitA',  name:'ビタミンA',  unit:'μgRAE', rda:900  },
+    { id:'vitD',  name:'ビタミンD',  unit:'μg',    rda:8.5  },
+    { id:'vitE',  name:'ビタミンE',  unit:'mg',    rda:6.5  },
+    { id:'vitK',  name:'ビタミンK',  unit:'μg',    rda:150  },
+    { id:'vitB1', name:'ビタミンB1', unit:'mg',    rda:1.4  },
+    { id:'vitB2', name:'ビタミンB2', unit:'mg',    rda:1.6  },
+    { id:'vitB6', name:'ビタミンB6', unit:'mg',    rda:1.4  },
+    { id:'vitB12',name:'ビタミンB12',unit:'μg',    rda:2.4  },
+    { id:'vitC',  name:'ビタミンC',  unit:'mg',    rda:100  },
+    { id:'niacin',name:'ナイアシン',  unit:'mgNE',  rda:15   },
+    { id:'pantA', name:'パントテン酸',unit:'mg',    rda:5    },
+    { id:'biotin',name:'ビオチン',    unit:'μg',    rda:50   },
+    { id:'folate',name:'葉酸',        unit:'μg',    rda:240  },
+  ],
+  minerals: [
+    { id:'ca',  name:'カルシウム',  unit:'mg',  rda:750  },
+    { id:'mg',  name:'マグネシウム',unit:'mg',  rda:370  },
+    { id:'fe',  name:'鉄',          unit:'mg',  rda:7.5  },
+    { id:'zn',  name:'亜鉛',        unit:'mg',  rda:11   },
+    { id:'cu',  name:'銅',          unit:'mg',  rda:0.9  },
+    { id:'mn',  name:'マンガン',    unit:'mg',  rda:4.0  },
+    { id:'se',  name:'セレン',      unit:'μg',  rda:30   },
+    { id:'cr',  name:'クロム',      unit:'μg',  rda:35   },
+    { id:'mo',  name:'モリブデン',  unit:'μg',  rda:30   },
+    { id:'iod', name:'ヨウ素',      unit:'μg',  rda:130  },
+    { id:'p',   name:'リン',        unit:'mg',  rda:1000 },
+    { id:'k',   name:'カリウム',    unit:'mg',  rda:2500 },
+    { id:'na',  name:'ナトリウム',  unit:'mg',  rda:600  },
+    { id:'cl',  name:'塩素',        unit:'mg',  rda:900  },
+    { id:'s',   name:'硫黄',        unit:'mg',  rda:400  },
+    { id:'fl',  name:'フッ素',      unit:'mg',  rda:3.0  },
+  ]
+};
+
+// === 食材データ（100g当たり栄養素含有量）===
+const FOODS = [
+  { name:'鶏レバー', per100:{ vitA:14000, vitD:0, vitE:0.6, vitK:0, vitB1:0.38, vitB2:1.80, vitB6:0.65, vitB12:44.4, vitC:20, niacin:11.6, pantA:7.17, biotin:232, folate:1300, ca:5, mg:19, fe:9.0, zn:3.3, cu:0.32, mn:0.18, se:72, cr:0, mo:0, iod:0, p:300, k:330, na:100, cl:0, s:0, fl:0 }},
+  { name:'豚レバー', per100:{ vitA:13000, vitD:1.3, vitE:0.3, vitK:0, vitB1:0.34, vitB2:3.60, vitB6:0.57, vitB12:25.2, vitC:20, niacin:14.0, pantA:6.50, biotin:78, folate:810, ca:5, mg:20, fe:13.0, zn:6.9, cu:0.99, mn:0.33, se:67, cr:0, mo:0, iod:0, p:340, k:290, na:55, cl:0, s:0, fl:0 }},
+  { name:'鮭',       per100:{ vitA:11,  vitD:32.0, vitE:3.2, vitK:0, vitB1:0.21, vitB2:0.21, vitB6:0.64, vitB12:8.9, vitC:1, niacin:7.1, pantA:1.63, biotin:5, folate:32, ca:14, mg:28, fe:0.5, zn:0.8, cu:0.10, mn:0.01, se:40, cr:0, mo:0, iod:12, p:260, k:350, na:66, cl:0, s:0, fl:0 }},
+  { name:'卵',       per100:{ vitA:150, vitD:3.8, vitE:1.1, vitK:11, vitB1:0.06, vitB2:0.43, vitB6:0.08, vitB12:0.9, vitC:0, niacin:0.1, pantA:1.50, biotin:25, folate:43, ca:51, mg:11, fe:1.8, zn:1.3, cu:0.06, mn:0.04, se:27, cr:0, mo:0, iod:36, p:180, k:130, na:140, cl:0, s:0, fl:0 }},
+  { name:'牛乳',     per100:{ vitA:38,  vitD:0.3, vitE:0.1, vitK:2, vitB1:0.04, vitB2:0.15, vitB6:0.03, vitB12:0.3, vitC:1, niacin:0.2, pantA:0.55, biotin:5, folate:5, ca:110, mg:10, fe:0.02, zn:0.4, cu:0.01, mn:0.00, se:3, cr:0, mo:0, iod:16, p:93, k:150, na:41, cl:0, s:0, fl:0 }},
+  { name:'ほうれん草',per100:{ vitA:350, vitD:0, vitE:2.1, vitK:270, vitB1:0.11, vitB2:0.20, vitB6:0.14, vitB12:0, vitC:35, niacin:0.6, pantA:0.20, biotin:3, folate:210, ca:49, mg:69, fe:2.0, zn:0.7, cu:0.11, mn:0.32, se:3, cr:0, mo:0, iod:0, p:47, k:690, na:16, cl:0, s:0, fl:0 }},
+  { name:'ブロッコリー',per100:{ vitA:67, vitD:0, vitE:2.4, vitK:160, vitB1:0.14, vitB2:0.20, vitB6:0.28, vitB12:0, vitC:120, niacin:1.0, pantA:1.12, biotin:8, folate:210, ca:38, mg:26, fe:1.0, zn:0.6, cu:0.08, mn:0.18, se:3, cr:0, mo:0, iod:0, p:89, k:360, na:20, cl:0, s:0, fl:0 }},
+  { name:'納豆',     per100:{ vitA:0, vitD:0, vitE:0.5, vitK:600, vitB1:0.07, vitB2:0.56, vitB6:0.24, vitB12:0, vitC:0, niacin:1.1, pantA:4.28, biotin:29, folate:120, ca:90, mg:100, fe:3.3, zn:1.9, cu:0.61, mn:1.00, se:8, cr:0, mo:0, iod:0, p:190, k:660, na:2, cl:0, s:0, fl:0 }},
+  { name:'豆腐',     per100:{ vitA:0, vitD:0, vitE:0.1, vitK:0, vitB1:0.09, vitB2:0.04, vitB6:0.06, vitB12:0, vitC:0, niacin:0.2, pantA:0.22, biotin:3, folate:12, ca:93, mg:57, fe:1.5, zn:0.6, cu:0.20, mn:0.41, se:7, cr:0, mo:0, iod:0, p:88, k:110, na:8, cl:0, s:0, fl:0 }},
+  { name:'白米',     per100:{ vitA:0, vitD:0, vitE:0, vitK:0, vitB1:0.08, vitB2:0.02, vitB6:0.02, vitB12:0, vitC:0, niacin:0.5, pantA:0.68, biotin:0, folate:3, ca:3, mg:11, fe:0.1, zn:0.6, cu:0.10, mn:0.35, se:3, cr:0, mo:0, iod:0, p:34, k:29, na:1, cl:0, s:0, fl:0 }},
+  { name:'さつまいも',per100:{ vitA:0, vitD:0, vitE:1.5, vitK:0, vitB1:0.11, vitB2:0.04, vitB6:0.26, vitB12:0, vitC:29, niacin:0.8, pantA:0.96, biotin:7, folate:49, ca:36, mg:24, fe:0.6, zn:0.2, cu:0.21, mn:0.41, se:1, cr:0, mo:0, iod:0, p:47, k:480, na:11, cl:0, s:0, fl:0 }},
+  { name:'バナナ',   per100:{ vitA:6, vitD:0, vitE:0.5, vitK:0, vitB1:0.05, vitB2:0.04, vitB6:0.38, vitB12:0, vitC:16, niacin:0.7, pantA:0.44, biotin:5, folate:26, ca:6, mg:32, fe:0.3, zn:0.2, cu:0.09, mn:0.26, se:1, cr:0, mo:0, iod:0, p:27, k:360, na:1, cl:0, s:0, fl:0 }},
+  { name:'アーモンド',per100:{ vitA:0, vitD:0, vitE:30.0, vitK:0, vitB1:0.03, vitB2:1.20, vitB6:0.06, vitB12:0, vitC:0, niacin:3.4, pantA:0.44, biotin:30, folate:96, ca:250, mg:310, fe:3.6, zn:4.4, cu:1.35, mn:2.16, se:10, cr:0, mo:0, iod:0, p:510, k:740, na:2, cl:0, s:0, fl:0 }},
+];
+
+let currentIntake = {};
+let addedFoods = [];
+let currentTab = 'vitamin';
+
+function init() {
+  const saved = localStorage.getItem('rda-intake');
+  if (saved) {
+    const data = JSON.parse(saved);
+    currentIntake = data.intake || {};
+    addedFoods = data.foods || [];
+  }
+  // populate select
+  const sel = document.getElementById('food-select');
+  FOODS.forEach((f, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = f.name;
+    sel.appendChild(opt);
+  });
+  renderFoods();
+  renderNutrients();
+}
+
+function addFood() {
+  const idx = parseInt(document.getElementById('food-select').value);
+  const amount = parseFloat(document.getElementById('food-amount').value) || 100;
+  const food = FOODS[idx];
+  addedFoods.push({ name: food.name, amount });
+  // add to intake
+  const factor = amount / 100;
+  Object.entries(food.per100).forEach(([key, val]) => {
+    currentIntake[key] = (currentIntake[key] || 0) + val * factor;
+  });
+  save();
+  renderFoods();
+  renderNutrients();
+}
+
+function removeFood(index) {
+  const item = addedFoods[index];
+  const food = FOODS.find(f => f.name === item.name);
+  if (food) {
+    const factor = item.amount / 100;
+    Object.entries(food.per100).forEach(([key, val]) => {
+      currentIntake[key] = Math.max(0, (currentIntake[key] || 0) - val * factor);
+    });
+  }
+  addedFoods.splice(index, 1);
+  save();
+  renderFoods();
+  renderNutrients();
+}
+
+function clearAll() {
+  currentIntake = {};
+  addedFoods = [];
+  save();
+  renderFoods();
+  renderNutrients();
+}
+
+function save() {
+  localStorage.setItem('rda-intake', JSON.stringify({ intake: currentIntake, foods: addedFoods }));
+}
+
+function setTab(tab) {
+  currentTab = tab;
+  document.getElementById('tab-vitamin').className = tab === 'vitamin'
+    ? 'px-5 py-2 rounded-full text-sm font-semibold bg-green-600 text-white transition'
+    : 'px-5 py-2 rounded-full text-sm font-semibold bg-white text-gray-600 border transition';
+  document.getElementById('tab-mineral').className = tab === 'mineral'
+    ? 'px-5 py-2 rounded-full text-sm font-semibold bg-green-600 text-white transition'
+    : 'px-5 py-2 rounded-full text-sm font-semibold bg-white text-gray-600 border transition';
+  renderNutrients();
+}
+
+function renderFoods() {
+  const container = document.getElementById('added-foods');
+  container.innerHTML = '';
+  addedFoods.forEach((item, i) => {
+    const tag = document.createElement('span');
+    tag.className = 'inline-flex items-center gap-1 bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm';
+    const text = document.createElement('span');
+    text.textContent = item.name + ' ' + item.amount + 'g';
+    const btn = document.createElement('button');
+    btn.setAttribute('aria-label', item.name + 'を削除');
+    btn.className = 'ml-1 text-green-600 hover:text-red-500 font-bold';
+    btn.textContent = '×';
+    btn.onclick = () => removeFood(i);
+    tag.appendChild(text);
+    tag.appendChild(btn);
+    container.appendChild(tag);
+  });
+}
+
+function renderNutrients() {
+  const list = currentTab === 'vitamin' ? RDA.vitamins : RDA.minerals;
+  const container = document.getElementById('nutrient-list');
+  container.innerHTML = '';
+  list.forEach(n => {
+    const intake = currentIntake[n.id] || 0;
+    const pct = Math.min(Math.round(intake / n.rda * 100), 150);
+    const pctDisplay = Math.round(intake / n.rda * 100);
+    let barColor = 'bg-green-400';
+    let badge = '';
+    if (pctDisplay < 50) { barColor = 'bg-red-400'; badge = '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full ml-2">⚠ 欠乏注意</span>'; }
+    else if (pctDisplay < 80) { barColor = 'bg-yellow-400'; badge = '<span class="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full ml-2">△ 不足気味</span>'; }
+    else if (pctDisplay >= 120) { barColor = 'bg-orange-400'; badge = '<span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full ml-2">↑ 過剰注意</span>'; }
+
+    const card = document.createElement('div');
+    card.className = 'bg-white rounded-xl shadow p-4 card-hover';
+    card.innerHTML = `
+      <div class="flex justify-between items-center mb-1">
+        <span class="font-semibold text-gray-700">${n.name}</span>
+        <div class="flex items-center">
+          <span class="text-sm text-gray-500">${intake.toFixed(1)} / ${n.rda} ${n.unit}</span>
+          ${badge}
+        </div>
+      </div>
+      <div class="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+        <div class="bar-fill ${barColor} h-3 rounded-full" style="width:${pct}%" role="progressbar" aria-valuenow="${pctDisplay}" aria-valuemin="0" aria-valuemax="100" aria-label="${n.name} 充足率 ${pctDisplay}%"></div>
+      </div>
+      <div class="text-right text-xs text-gray-400 mt-1">${pctDisplay}% RDA</div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+init();
+</script>
+</body>
+</html>
